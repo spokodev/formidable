@@ -55,6 +55,7 @@ test("octet stream", (done) => {
 
 test("octet stream enforces maxFileSize", (done) => {
   const PORT2 = PORT + 1;
+  let request;
   const server = createServer((req, res) => {
     const form = formidable({ maxFileSize: 1024, maxTotalFileSize: 2048 });
 
@@ -65,6 +66,9 @@ test("octet stream enforces maxFileSize", (done) => {
       strictEqual(Object.keys(files).length, 0);
 
       res.end();
+      // The upload was rejected mid-body, so the connection never completes on
+      // its own; without this the socket outlives the test and Jest's worker.
+      request.destroy();
       server.close();
       done();
     });
@@ -73,7 +77,7 @@ test("octet stream enforces maxFileSize", (done) => {
   server.listen(PORT2, (err) => {
     assert(!err, "should not have error, but be falsey");
 
-    const request = _request({
+    request = _request({
       port: PORT2,
       method: "POST",
       headers: {
@@ -81,6 +85,8 @@ test("octet stream enforces maxFileSize", (done) => {
       },
     });
 
+    // Destroying the request above surfaces here as ECONNRESET.
+    request.on("error", () => {});
     request.end(Buffer.alloc(256 * 1024, 0x42));
   });
 });
